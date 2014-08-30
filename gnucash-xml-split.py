@@ -2,6 +2,7 @@ import argparse
 import decimal
 import gzip
 import datetime
+from collections import defaultdict
 from xml.etree import ElementTree
 
 parser = argparse.ArgumentParser(description='GnuCash XML Splitter')
@@ -45,20 +46,18 @@ i = 0
 for book in root.findall('./{http://www.gnucash.org/XML/gnc}book'):
     accountdict = {}
     for account in book.findall('{http://www.gnucash.org/XML/gnc}account'):
-        act = '{http://www.gnucash.org/XML/act}'
-        cmdty = '{http://www.gnucash.org/XML/cmdty}'
-        name = account.find(act + 'name').text
-        guid = account.find(act + 'id').text
-        actype = account.find(act + 'type').text
-        description = account.find(act + "description")
+        name = account.find('{http://www.gnucash.org/XML/act}name').text
+        guid = account.find('{http://www.gnucash.org/XML/act}id').text
+        actype = account.find('{http://www.gnucash.org/XML/act}type').text
+        description = account.find('{http://www.gnucash.org/XML/act}description')
         if description is not None:
             description = description.text
         if actype == 'ROOT':
             parent = None
             commodity = None
         else:
-            parent = account.find(act + 'parent').text
-            commodity = account.find(act + 'commodity/' + cmdty + 'id').text
+            parent = account.find('{http://www.gnucash.org/XML/act}parent').text
+            commodity = account.find('{http://www.gnucash.org/XML/act}commodity/{http://www.gnucash.org/XML/cmdty}id').text
         accountdict[guid] = Account(name=name,
                 description=description,
                 guid=guid,
@@ -97,9 +96,23 @@ for book in root.findall('./{http://www.gnucash.org/XML/gnc}book'):
             book.remove(transaction)
     for count in book.findall('{http://www.gnucash.org/XML/gnc}count-data'):
         if count.get('{http://www.gnucash.org/XML/cd}type') == 'transaction':
-            count.text = str(i);
+            count.text = str(i)
+    balancedict = defaultdict(list)
     for acc_key in accountdict:
         account = accountdict[acc_key]
-        if account.actype != 'ROOT' and account.actype != 'INCOME' and account.actype != 'EXPENSE' :
-            print(args.year+'-01-01,'+'{0},{1},"{2}"'.format(account.commodity, account.balance, account.name_full))
+        if account.actype != 'ROOT' and account.actype != 'INCOME' and account.actype != 'EXPENSE' and account.actype != 'EQUITY' and account.balance != 0:
+            balancedict[account.commodity].append(account)
+    for cmdy_key in balancedict:
+        f = open (args.year + cmdy_key + '.qif', 'w', encoding='utf-8');
+        print('!Account', file=f)
+        print('NEquity:Opening Balances:'+cmdy_key, file=f)
+        print('TOth A', file=f)
+        print('^', file=f)
+        print('!Type:Oth A', file=f)
+        print('D' + args.year + '-01-01', file=f)
+        for account in balancedict[cmdy_key]:
+            print('S' + account.name_full, file=f)
+            print('$' + str(-account.balance), file=f)
+        print('^', file=f)
+        f.close()
 xmltree.write(args.output, encoding="utf8")

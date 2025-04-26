@@ -21,6 +21,6 @@ This utility will NOT add any transaction in the output file. Opening balancs ar
 
 Note
 ==========
-It should be easy to modify the utility to extract transations in arbitrary period. By my guest.
+It should be easy to modify the utility to extract transations in arbitrary period.
 
 If you find any bug or inconvenience, feel free to open an issue. 

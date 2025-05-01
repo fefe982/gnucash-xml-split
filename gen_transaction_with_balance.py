@@ -1,14 +1,15 @@
 import argparse
-import datetime
+import csv
 import decimal
-from collections import defaultdict
 
 import gnucash_base as gb
 
-parser = argparse.ArgumentParser(description="GnuCash XML Splitter")
+parser = argparse.ArgumentParser(
+    description="Generate GnuCash transaction (in csv) to meet the final balance requirement"
+)
 parser.add_argument("-i", "--input", help="input file name", required=True)
-parser.add_argument("-o", "--output", help="output file name", required=True)
-parser.add_argument("-y", "--year", help="year of the transations to extract", required=True)
+parser.add_argument("-o", "--output", help="csv output file name", required=True)
+parser.add_argument("-b", "--balance", help="csv file contains the final balance", required=True)
 args = parser.parse_args()
 
 
@@ -16,10 +17,6 @@ xmltree = gb.getElementTreeFromFile(args.input)
 root = xmltree.getroot()
 
 
-dtfrom = datetime.datetime.strptime(args.year + "-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-dtto = datetime.datetime.strptime(args.year + "-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")
-
-i = 0
 for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
     accountdict = {}
     for account in book.findall("{http://www.gnucash.org/XML/gnc}account"):
@@ -60,23 +57,14 @@ for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
         datestr = gb.getElementText(
             transaction, "./{http://www.gnucash.org/XML/trn}date-posted/{http://www.gnucash.org/XML/ts}date"
         )
-        dt = datetime.datetime.strptime(datestr, "%Y-%m-%d %H:%M:%S %z").replace(tzinfo=None)
-        if dt >= dtfrom and dt <= dtto:
-            i = i + 1
-        else:
-            if dt < dtfrom:
-                for split in transaction.findall(
-                    "{http://www.gnucash.org/XML/trn}splits/{http://www.gnucash.org/XML/trn}split"
-                ):
-                    quantity = gb.getElementText(split, "{http://www.gnucash.org/XML/split}quantity")
-                    account = accountdict[gb.getElementText(split, "{http://www.gnucash.org/XML/split}account")]
-                    num, denom = quantity.split("/")
-                    account.balance = account.balance + decimal.Decimal(num) / decimal.Decimal(denom)
-            book.remove(transaction)
-    for count in book.findall("{http://www.gnucash.org/XML/gnc}count-data"):
-        if count.get("{http://www.gnucash.org/XML/cd}type") == "transaction":
-            count.text = str(i)
-    balancedict = defaultdict(list)
+        for split in transaction.findall(
+            "{http://www.gnucash.org/XML/trn}splits/{http://www.gnucash.org/XML/trn}split"
+        ):
+            quantity = gb.getElementText(split, "{http://www.gnucash.org/XML/split}quantity")
+            account = accountdict[gb.getElementText(split, "{http://www.gnucash.org/XML/split}account")]
+            num, denom = quantity.split("/")
+            account.balance = account.balance + decimal.Decimal(num) / decimal.Decimal(denom)
+    balancedict = {}
     for acc_key, account in accountdict.items():
         if (
             account.actype != "ROOT"
@@ -85,18 +73,19 @@ for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
             and account.actype != "EQUITY"
             and account.balance != 0
         ):
-            balancedict[account.commodity].append(account)
-    for cmdy_key in balancedict:
-        f = open(args.year + cmdy_key + ".qif", "w", encoding="utf-8")
-        print("!Account", file=f)
-        print("NEquity:Opening Balances:" + cmdy_key, file=f)
-        print("TOth A", file=f)
-        print("^", file=f)
-        print("!Type:Oth A", file=f)
-        print("D" + args.year + "-01-01", file=f)
-        for account in balancedict[cmdy_key]:
-            print("S" + account.name_full, file=f)
-            print("$" + str(-account.balance), file=f)
-        print("^", file=f)
-        f.close()
-xmltree.write(args.output, encoding="utf8")
+            balancedict[account.name_full] = account.balance
+    total = decimal.Decimal(0)
+    with (
+        open(args.balance, "r", encoding="utf-8", newline="") as inf,
+        open(args.output, "w", encoding="utf-8", newline="") as outf,
+    ):
+        reader = csv.reader(inf)
+        writer = csv.writer(outf)
+        for row in reader:
+            if row[0] not in balancedict:
+                print(f"Account {row[0]} not found in the balance file")
+                continue
+            diff = decimal.Decimal(row[1]) - balancedict[row[0]]
+            writer.writerow([row[0], -diff])
+            total += diff
+    print(f"Total: {total}")

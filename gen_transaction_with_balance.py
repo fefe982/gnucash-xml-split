@@ -1,5 +1,6 @@
 import argparse
 import csv
+import datetime
 import decimal
 
 import gnucash_base as gb
@@ -75,6 +76,8 @@ for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
         ):
             balancedict[account.name_full] = account.balance
     total = decimal.Decimal(0)
+    for acc_key, balance in balancedict.items():
+        print(f"{acc_key},{balance}")
     with (
         open(args.balance, "r", encoding="utf-8", newline="") as inf,
         open(args.output, "w", encoding="utf-8", newline="") as outf,
@@ -82,10 +85,10 @@ for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
         reader = csv.reader(inf)
         writer = csv.writer(outf)
         for row in reader:
-            if row[0] not in balancedict:
-                print(f"Account {row[0]} not found in the balance file")
+            if row[1] not in balancedict:
+                print(f"Account {row[1]} not found in the balance file")
                 continue
-            diff = decimal.Decimal(row[1]) - balancedict[row[0]]
-            writer.writerow([row[0], -diff])
+            diff = decimal.Decimal(row[2]) - balancedict[row[1]]
+            writer.writerow([str(datetime.date.today()), row[0], row[1], diff])
             total += diff
     print(f"Total: {total}")

@@ -89,6 +89,8 @@ for book in root.findall("./{http://www.gnucash.org/XML/gnc}book"):
                 print(f"Account {row[1]} not found in the balance file")
                 continue
             diff = decimal.Decimal(row[2]) - balancedict[row[1]]
+            if diff == 0:
+                continue
             writer.writerow([str(datetime.date.today()), row[0], row[1], diff])
             total += diff
     print(f"Total: {total}")
